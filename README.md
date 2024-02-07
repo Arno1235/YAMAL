@@ -9,20 +9,8 @@ YAMAL is a lightweight Python framework designed for easily running nodes in par
 - **Inter-Node Communication**: Nodes can communicate with each other seamlessly using YAMAL's messaging system, allowing for efficient data exchange and coordination.
 
 ## Getting Started:
-To start using YAMAL, simply install the package and create YAML launch files to define your node configurations. YAMAL provides intuitive APIs for creating and managing nodes, as well as sending and receiving messages between them.
+TODO
 
 ## Example Usage:
 ```python
-import yamal
-
-# Define node configurations in a YAML launch file
-launch_file = "example_launch.yaml"
-
-# Launch nodes based on the YAML configuration
-yamal.launch(launch_file)
-
-# Perform additional operations with the running nodes
-...
-
-# Shutdown nodes when finished
-yamal.shutdown()
+TODO
