@@ -8,6 +8,24 @@ import builtins
 import inspect
 
 
+
+def str_to_bool(s):
+    if s.lower() in ('true', 't', 'yes', 'y', '1'):
+        return True
+    elif s.lower() in ('false', 'f', 'no', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Invalid value for boolean argument: '{}'".format(s))
+
+def verbose_print(*args, **kwargs):
+
+    if 'verbose' in kwargs and verbose < kwargs['verbose']:
+        return
+    
+    original_print(*args)
+
+
+
 class Node_Manager:
 
     def __init__(self):
@@ -74,6 +92,16 @@ class Node_Manager:
             if topic in self.subscriptions:
                 self.subscriptions[topic] = [x for x in self.subscriptions[topic] if x[0] != subscriber]
             print(f'ussubscribed {subscriber.name} to {topic}', verbose=3)
+    
+    def get_nodes(self):
+        for node, thread in self.threads:
+            print(f'{node.name} is {"running" if thread.is_alive() else "closed" if node._close_event.is_set() else "standby"}')
+    
+    def get_topics(self):
+        for topic in self.subscriptions:
+            print(f'topic: {topic}')
+            for subscriber, callback_function in self.subscriptions[topic]:
+                print(f' - {subscriber.name}')
 
 
 class Node:
@@ -114,7 +142,6 @@ class Cli:
         self.stdscr = curses.initscr()
         self.term_h, self.term_w = self.stdscr.getmaxyx()
 
-        curses.noecho()  # Disable automatic echoing of characters
         curses.cbreak()  # React to keys instantly without requiring Enter
         self.stdscr.keypad(True)  # Enable special keys (e.g., arrows)
 
@@ -153,18 +180,29 @@ class Cli:
 
         self.stdscr.addstr(self.term_h - 3, 0, "Commands: " + ", ".join(commands))
         self.stdscr.refresh()
-        curses.echo()
+
+        self.stdscr.move(self.term_h - 2, 0)
+        self.stdscr.clrtoeol()
 
         user_input = self.stdscr.getstr(self.term_h - 2, 0).decode('utf-8')
 
+        self.stdscr.move(self.term_h - 1, 0)
+        self.stdscr.clrtoeol()
+
         for command in commands:
             if user_input == str(command):
-                print(inspect.signature(getattr(self.mgr, command)))
+                # print(inspect.signature(getattr(self.mgr, command)))
 
+                self.stdscr.addstr(self.term_h - 1, 0, f'executing {command}...')
+
+                print(f'{command}:')
                 getattr(self.mgr, command)()
 
-        curses.noecho()  # Disable automatic echoing of characters
-        self.stdscr.addstr(self.term_h - 1, 0, "Input thread: User input received: " + str(user_input))
+                break
+        else:
+            self.stdscr.addstr(self.term_h - 1, 0, 'command not recognized')
+        
+
         self.stdscr.refresh()
 
         if not self._close_event.is_set():
@@ -185,13 +223,14 @@ class Cli:
         curses.endwin()
 
 
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Run YAMAL', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--cfg', type=str, default=None, help='Path to config yaml file')
     parser.add_argument('--verbose', type=int, default=1, help='Verbose level')
-    parser.add_argument('--cli', type=bool, default=True, help='Run in CLI mode')
+    parser.add_argument('--cli', type=str_to_bool, default='True', help='Run in CLI mode')
 
     args = parser.parse_args()
 
@@ -200,6 +239,10 @@ if __name__ == '__main__':
     
     if args.cli:
         cli = Cli(mgr, args.verbose)
+    else:
+        verbose = args.verbose
+        original_print = print
+        builtins.print = verbose_print
 
     if args.verbose > 0:
         print(f'starting with verbose level {args.verbose}, cli: {args.cli} and config file at {args.cfg}')
