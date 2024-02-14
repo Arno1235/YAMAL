@@ -11,5 +11,3 @@ class Test_Pub(Node):
 
             if self._close_event.is_set():
                 return
-
-        # self.mgr.close_all_nodes()

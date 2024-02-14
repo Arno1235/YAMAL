@@ -175,6 +175,7 @@ class Cli:
         # TODO: add posibility for functions with input parameters
         # TODO: add verbose level change command
         # TODO: catch ctrl+c
+        # TODO: add auto tab completion
 
         commands = [attr for attr in dir(self.mgr) if callable(getattr(self.mgr, attr)) and attr[0] != '_']
 
