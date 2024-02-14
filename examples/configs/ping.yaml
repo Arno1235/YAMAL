@@ -1,0 +1,10 @@
+# Example config YAML file
+node1:
+  class name: Ping_Pub
+  location: examples/nodes/ping/ping.py
+  args:
+    number of pings: 10
+
+node2:
+  class name: Ping_Sub
+  location: examples/nodes/ping/ping.py
