@@ -1,11 +1,9 @@
-import threading
-import argparse
-import yaml
-import time
-import importlib.util
+import threading, multiprocessing
+import argparse, yaml
+import importlib.util, builtins, inspect
 import curses
-import builtins
-import inspect
+import time
+import cv2
 
 
 
@@ -222,6 +220,38 @@ class Cli:
         self.stdscr.keypad(False)
         curses.echo()
         curses.endwin()
+
+
+class Image_Display:
+
+    def __init__(self):
+        self.image_queue = multiprocessing.Queue()
+        self.queue_size = multiprocessing.Value('i', 0)
+
+        self.process = multiprocessing.Process(target=self._display_process)
+        self.process.start()
+        
+    def display(self, image):
+        self.image_queue.put(image)
+        self.queue_size.value += 1
+    
+    def close(self):
+        self.queue_size.value = -1
+        self.process.join()
+
+    def _display_process(self):
+
+        while self.queue_size.value != -1:
+
+            while self.queue_size.value == 0:
+                cv2.waitKey(1)
+            
+            if self.queue_size.value > 0:
+                image = self.image_queue.get()
+                self.queue_size.value -= 1
+                cv2.imshow('image', image)
+        
+        cv2.destroyAllWindows()
 
 
 

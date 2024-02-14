@@ -1,4 +1,5 @@
 # Example config YAML file
+
 node1:
   class name: Ping_Pub
   location: examples/nodes/ping/ping.py

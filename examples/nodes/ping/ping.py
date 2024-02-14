@@ -35,3 +35,5 @@ class Ping_Sub(Node):
         print(f'max ping: {round(max(self.pings), 2)}ns')
         print(f'min ping: {round(min(self.pings), 2)}ns')
         print('---')
+        
+        return super().before_close()

@@ -1,0 +1,13 @@
+# Example config YAML file
+
+camera:
+  class name: Webcam
+  location: examples/nodes/imaging/webcam.py
+  args:
+    fps: 30
+
+node2:
+  class name: Display_frame
+  location: examples/nodes/imaging/display_frame.py
+  args:
+    frame subscription: webcam_frame
