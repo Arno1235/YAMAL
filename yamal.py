@@ -173,7 +173,6 @@ class Cli:
         # TODO: add posibility for functions with input parameters
         # TODO: add verbose level change command
         # TODO: catch ctrl+c
-        # TODO: add auto tab completion
 
         commands = [attr for attr in dir(self.mgr) if callable(getattr(self.mgr, attr)) and attr[0] != '_']
 
@@ -183,7 +182,47 @@ class Cli:
         self.stdscr.move(self.term_h - 2, 0)
         self.stdscr.clrtoeol()
 
-        user_input = self.stdscr.getstr(self.term_h - 2, 0).decode('utf-8')
+
+        user_input = ''
+
+        while True:
+            char = self.stdscr.getch()
+
+            with self.lock:
+
+                if chr(char) == '\n':
+                    break
+
+                if char == curses.KEY_BACKSPACE:
+                    user_input = user_input[:-1]
+                    self.stdscr.clrtoeol()
+                    continue
+
+                if chr(char) == '\t':
+                    y, _ = self.stdscr.getyx()
+                    x = len(user_input)
+                    self.stdscr.move(y, x)
+                    self.stdscr.clrtoeol()
+
+                    possible_commands = [command for command in commands if command[:len(user_input)] == user_input]
+
+                    if len(possible_commands) == 0:
+                        self.stdscr.addstr(self.term_h - 1, 0, f'command {user_input} not recognized')
+
+                    elif len(possible_commands) == 1:
+                        self.stdscr.addstr(y, 0, possible_commands[0])
+                        user_input = possible_commands[0]
+                        x = len(possible_commands[0])
+
+                    elif len(possible_commands) > 1:
+                        self.stdscr.addstr(self.term_h - 1, 0, f'{possible_commands}')
+
+                    self.stdscr.move(y, x)
+
+                    continue
+                
+            user_input += chr(char)
+        
 
         self.stdscr.move(self.term_h - 1, 0)
         self.stdscr.clrtoeol()
@@ -199,7 +238,7 @@ class Cli:
 
                 break
         else:
-            self.stdscr.addstr(self.term_h - 1, 0, 'command not recognized')
+            self.stdscr.addstr(self.term_h - 1, 0, f'command {user_input} not recognized')
         
 
         self.stdscr.refresh()
