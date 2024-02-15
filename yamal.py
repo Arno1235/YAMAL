@@ -200,8 +200,7 @@ class Cli:
 
                 if chr(char) == '\t':
                     y, _ = self.stdscr.getyx()
-                    x = len(user_input)
-                    self.stdscr.move(y, x)
+                    self.stdscr.move(y, len(user_input))
                     self.stdscr.clrtoeol()
 
                     possible_commands = [command for command in commands if command[:len(user_input)] == user_input]
@@ -212,12 +211,23 @@ class Cli:
                     elif len(possible_commands) == 1:
                         self.stdscr.addstr(y, 0, possible_commands[0])
                         user_input = possible_commands[0]
-                        x = len(possible_commands[0])
 
                     elif len(possible_commands) > 1:
+                        similar_part = ""
+                        for i, c in enumerate(possible_commands[0]):
+                            for command in possible_commands:
+                                if c != command[i]:
+                                    break
+                            else:
+                                similar_part += c
+                                continue
+                            break
+
+                        self.stdscr.addstr(y, 0, similar_part)
+                        user_input = similar_part
                         self.stdscr.addstr(self.term_h - 1, 0, f'{possible_commands}')
 
-                    self.stdscr.move(y, x)
+                    self.stdscr.move(y, len(user_input))
 
                     continue
                 
