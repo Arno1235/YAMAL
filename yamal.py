@@ -307,6 +307,8 @@ class Image_Display:
 
     def _display_process(self):
 
+        t = time.time()
+
         while self.queue_size.value != -1:
 
             while self.queue_size.value == 0:
@@ -315,7 +317,10 @@ class Image_Display:
             if self.queue_size.value > 0:
                 image = self.image_queue.get()
                 self.queue_size.value -= 1
-                cv2.imshow(f'{self.name}', image)
+                cv2.imshow(self.name, image)
+                cv2.setWindowTitle(self.name, f'{self.name} - display fps: {1/(time.time() - t):.2f}')
+
+                t = time.time()
         
         cv2.destroyAllWindows()
 
