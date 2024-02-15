@@ -279,7 +279,9 @@ class Cli:
 
 class Image_Display:
 
-    def __init__(self):
+    def __init__(self, name):
+        self.name = name
+
         self.image_queue = multiprocessing.Queue()
         self.queue_size = multiprocessing.Value('i', 0)
 
@@ -313,7 +315,7 @@ class Image_Display:
             if self.queue_size.value > 0:
                 image = self.image_queue.get()
                 self.queue_size.value -= 1
-                cv2.imshow('image', image)
+                cv2.imshow(f'{self.name}', image)
         
         cv2.destroyAllWindows()
 
