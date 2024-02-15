@@ -232,6 +232,15 @@ class Image_Display:
         self.process.start()
         
     def display(self, image):
+
+        if self.queue_size.value > 3:
+            # Clear queue if it gets too large
+            print(f'clearing image queue, queue size of {self.queue_size.value} is too large', verbose=2)
+            while not self.image_queue.empty():
+                self.image_queue.get()
+            self.queue_size.value = 0
+
+
         self.image_queue.put(image)
         self.queue_size.value += 1
     
