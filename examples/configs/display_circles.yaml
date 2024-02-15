@@ -1,0 +1,25 @@
+# Example config YAML file
+
+camera:
+  class name: Webcam
+  location: examples/nodes/imaging/webcam.py
+  args:
+    fps: 10
+
+circle_detection:
+  class name: Circle_detection
+  location: examples/nodes/imaging/circle_detection.py
+  args:
+    frame subscription: webcam_frame
+
+webcam_display:
+  class name: Display_frame
+  location: examples/nodes/imaging/display_frame.py
+  args:
+    frame subscription: webcam_frame
+
+circles_display:
+  class name: Display_frame
+  location: examples/nodes/imaging/display_frame.py
+  args:
+    frame subscription: circle_detection_frame

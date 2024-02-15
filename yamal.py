@@ -72,11 +72,15 @@ class Node_Manager:
             print(f'{node.name} closed', verbose=2)
     
     def publish(self, topic, message):
+        execute = []
         with self.lock:
             if topic in self.subscriptions:
                 for subscriber, callback_function in self.subscriptions[topic]:
-                    print(f'publishing... topic: {topic}, subscriber: {subscriber.name}, message: {str(message)}', verbose=3)
-                    callback_function(topic, message)
+                    execute.append(callback_function)
+        
+        for e in execute:
+            print(f'publishing... topic: {topic}, subscriber: {subscriber.name}, message: {str(message) if len(str(message)) < 10 else 'too long'}', verbose=3)
+            e(topic, message)
 
     def subscribe(self, topic, callback_function, subscriber):
         with self.lock:
@@ -159,12 +163,12 @@ class Cli:
         if 'verbose' in kwargs and self.verbose < kwargs['verbose']:
             return
 
-        with self.lock:
+        # with self.lock:
 
-            y, x = self.stdscr.getyx()
-            self.stdscr.addstr(self.line, 0, " ".join(str(arg) for arg in args))
-            self.stdscr.move(y, x)
-            self.stdscr.refresh()
+        y, x = self.stdscr.getyx()
+        self.stdscr.addstr(self.line, 0, " ".join(str(arg) for arg in args))
+        self.stdscr.move(y, x)
+        self.stdscr.refresh()
 
         self.line += 1
     
@@ -176,13 +180,13 @@ class Cli:
 
         commands = [attr for attr in dir(self.mgr) if callable(getattr(self.mgr, attr)) and attr[0] != '_']
 
-        with self.lock:
+        # with self.lock:
 
-            self.stdscr.addstr(self.term_h - 3, 0, "Commands: " + ", ".join(commands))
-            self.stdscr.refresh()
+        self.stdscr.addstr(self.term_h - 3, 0, "Commands: " + ", ".join(commands))
+        self.stdscr.refresh()
 
-            self.stdscr.move(self.term_h - 2, 0)
-            self.stdscr.clrtoeol()
+        self.stdscr.move(self.term_h - 2, 0)
+        self.stdscr.clrtoeol()
 
 
         user_input = ''
