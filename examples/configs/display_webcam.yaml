@@ -11,9 +11,3 @@ display1:
   location: examples/nodes/imaging/display_frame.py
   args:
     frame subscription: webcam_frame
-
-display2:
-  class name: Display_frame
-  location: examples/nodes/imaging/display_frame.py
-  args:
-    frame subscription: webcam_frame
