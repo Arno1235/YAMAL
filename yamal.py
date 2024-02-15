@@ -266,7 +266,7 @@ class Cli:
 
         self._close_event.set()
 
-        print('press button to exit cli...', verbose=0)
+        print('press ENTER to exit cli...', verbose=0)
 
         self.input_thread.join()
 
