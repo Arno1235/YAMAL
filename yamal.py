@@ -158,7 +158,7 @@ class Cli:
 
         if 'verbose' in kwargs and self.verbose < kwargs['verbose']:
             return
-        
+
         with self.lock:
 
             y, x = self.stdscr.getyx()
@@ -176,11 +176,13 @@ class Cli:
 
         commands = [attr for attr in dir(self.mgr) if callable(getattr(self.mgr, attr)) and attr[0] != '_']
 
-        self.stdscr.addstr(self.term_h - 3, 0, "Commands: " + ", ".join(commands))
-        self.stdscr.refresh()
+        with self.lock:
 
-        self.stdscr.move(self.term_h - 2, 0)
-        self.stdscr.clrtoeol()
+            self.stdscr.addstr(self.term_h - 3, 0, "Commands: " + ", ".join(commands))
+            self.stdscr.refresh()
+
+            self.stdscr.move(self.term_h - 2, 0)
+            self.stdscr.clrtoeol()
 
 
         user_input = ''
@@ -243,7 +245,7 @@ class Cli:
 
                 self.stdscr.addstr(self.term_h - 1, 0, f'executing {command}...')
 
-                print(f'{command}:')
+                print(f'{command}:', use_lock=False)
                 getattr(self.mgr, command)()
 
                 break
