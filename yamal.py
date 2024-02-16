@@ -80,7 +80,7 @@ class Node_Manager:
         
         for e in execute:
             print(f'publishing... topic: {topic}, subscriber: {subscriber.name}, message: {str(message) if len(str(message)) < 10 else "too long"}', verbose=3)
-            e(topic, message)
+            e(topic, message.copy())
 
     def subscribe(self, topic, callback_function, subscriber):
         with self.lock:

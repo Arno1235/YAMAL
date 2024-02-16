@@ -4,7 +4,7 @@ camera:
   class name: Webcam
   location: examples/nodes/imaging/webcam.py
   args:
-    fps: 10
+    fps: 30
 
 circle_detection:
   class name: Circle_detection
