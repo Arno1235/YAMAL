@@ -4,6 +4,7 @@ import importlib.util, builtins, inspect
 import curses
 import time
 import cv2
+import copy
 
 
 
@@ -20,21 +21,29 @@ def verbose_print(*args, **kwargs):
         return
     original_print(*args)
 
+verbose = 0
+original_print = print
+builtins.print = verbose_print
 
 
 class Node_Manager:
 
-    def __init__(self):
+    def __init__(self, args=None):
         self.lock = threading.Lock()
         self.subscriptions = {}
         self.threads = []
+
+        if args is not None and args.cli:
+            verbose = args.verbose
+            original_print = print
+            builtins.print = verbose_print
     
     def _start(self, config):
         for name, properties in config.items():
 
             node = self._load_external_node(properties['location'], properties['class name'])
 
-            node = node(name, mgr, properties['args'] if 'args' in properties else None)
+            node = node(name, self, properties['args'] if 'args' in properties else None)
 
             thread = threading.Thread(target=node.run, daemon=True)
             self.threads.append((node, thread))
@@ -78,7 +87,7 @@ class Node_Manager:
         
         for e in execute:
             print(f'publishing... topic: {topic}, subscriber: {subscriber.name}, message: {str(message) if len(str(message)) < 10 else "too long"}', verbose=3)
-            e(topic, message.copy())
+            e(topic, copy.copy(message))
 
     def subscribe(self, topic, callback_function, subscriber):
         with self.lock:
@@ -341,14 +350,15 @@ if __name__ == '__main__':
         cli = Cli(mgr, args.verbose)
     else:
         verbose = args.verbose
-        original_print = print
-        builtins.print = verbose_print
+        # original_print = print
+        # builtins.print = verbose_print
 
     if args.verbose > 0:
         print(f'starting with verbose level {args.verbose}, cli: {args.cli} and config file at {args.cfg}')
 
     with open(args.cfg, 'r') as f:
         config = yaml.full_load(f)
+    
 
     mgr._start(config)
 
