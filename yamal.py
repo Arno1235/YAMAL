@@ -21,11 +21,6 @@ def verbose_print(*args, **kwargs):
         return
     original_print(*args)
 
-# TODO
-verbose = 0
-original_print = print
-builtins.print = verbose_print
-
 
 class Node_Manager:
 
@@ -333,6 +328,10 @@ class Image_Display:
         cv2.destroyAllWindows()
 
 
+verbose = 1
+original_print = print
+builtins.print = verbose_print
+
 
 if __name__ == '__main__':
 
@@ -344,16 +343,15 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    verbose = args.verbose
+
 
     mgr = Node_Manager()
     
     if args.cli:
         cli = Cli(mgr, args.verbose)
-    else:
-        verbose = args.verbose
 
-    if args.verbose > 0:
-        print(f'starting with verbose level {args.verbose}, cli: {args.cli} and config file at {args.cfg}')
+    print(f'starting with verbose level {args.verbose}, cli: {args.cli} and config file at {args.cfg}', verbose=1)
 
     with open(args.cfg, 'r') as f:
         config = yaml.full_load(f)
