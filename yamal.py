@@ -5,6 +5,17 @@ import curses
 import time
 import cv2
 import copy
+import socket, struct
+
+
+HOST = '127.0.0.1'
+PORT = 65432
+
+START_MARKER = b'$START$'
+END_MARKER = b'$END$'
+SPLIT_MARKER = b'$SPLIT$'
+CLOSE_MARKER = b'$CLOSE$'
+SUBSCRIPTION_MARKER = b'$SUB$'
 
 
 
@@ -16,23 +27,33 @@ def str_to_bool(s):
     else:
         raise argparse.ArgumentTypeError("Invalid value for boolean argument: '{}'".format(s))
 
-def verbose_print(*args, **kwargs):
-    if 'verbose' in kwargs and verbose < kwargs['verbose']:
-        return
-    original_print(*args)
+
+def get_arg(args, key, default):
+    if args is None:
+        return default
+    if key not in args:
+        return default
+    return getattr(args, key)
 
 
 class Node_Manager:
 
     def __init__(self, args=None):
+        self._close_event = threading.Event()
         self.lock = threading.Lock()
         self.subscriptions = {}
         self.threads = []
 
-        if args is not None and args.cli:
-            verbose = args.verbose
-            original_print = print
-            builtins.print = verbose_print
+        self.args = args
+
+        if not get_arg(self.args, 'cli', False):
+            self.original_print = print
+            builtins.print = self._verbose_print
+    
+    def _verbose_print(self, *args, **kwargs):
+        if 'verbose' in kwargs and get_arg(self.args, 'verbose', 1) < kwargs['verbose']:
+            return
+        self.original_print(*args)
     
     def _start(self, config):
         for name, properties in config.items():
@@ -49,10 +70,22 @@ class Node_Manager:
         for node, thread in self.threads:
             thread.start()
             print(f'{node.name} started', verbose=1)
+
+        server_thread = None
+        if get_arg(self.args, 'server', False):
+            self.server_threads = []
+            server_thread = threading.Thread(target=self._server, daemon=True)
+            server_thread.start()
         
         for node, thread in self.threads:
             thread.join()
             print(f'{node.name} joined', verbose=1)
+        
+        self._close_event.set()
+        
+        if server_thread is not None:
+            print('waiting for server thread to close, this can take up to 30s ...', verbose=1)
+            server_thread.join()
         
         print('all threads stopped', verbose=1)
     
@@ -64,8 +97,46 @@ class Node_Manager:
         spec.loader.exec_module(module)
 
         return getattr(module, class_name)
+    
+    def _server(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind((HOST, PORT))
+
+            s.listen()
+            print("server is listening for connections...", verbose=1)
+            
+            while not self._close_event.is_set():
+                try:
+                    s.settimeout(10)
+                    conn, addr = s.accept()
+
+                    packet = conn.recv(4096)
+
+                    if packet[:len(SUBSCRIPTION_MARKER)] != SUBSCRIPTION_MARKER or packet[-len(END_MARKER):] != END_MARKER:
+                        print(f'unrecognized format for connection request: {packet}', verbose=1)
+
+                    subscription = packet[len(SUBSCRIPTION_MARKER):-len(END_MARKER)].decode()
+                    print(f'received new connection request for {subscription}', verbose=1)
+
+                    node = Socket_Node(f'socket node {subscription}', self, conn, subscription)
+                    thread = threading.Thread(target=node.run, daemon=True)
+                    thread.start()
+                    print(f'{node.name} started', verbose=3)
+                    self.server_threads.append((node, thread))
+
+                except socket.timeout:
+                    pass
+            
+            for node, thread in self.server_threads:
+                node.close()
+                print(f'{node.name} closed', verbose=2)
+                thread.join()
+                print(f'{node.name} joined', verbose=1)
+            
         
     def close_all_nodes(self):
+
+        self._close_event.set()
 
         with self.lock:
             self.subscriptions = []
@@ -79,10 +150,10 @@ class Node_Manager:
         with self.lock:
             if topic in self.subscriptions:
                 for subscriber, callback_function in self.subscriptions[topic]:
-                    execute.append(callback_function)
+                    execute.append((subscriber, callback_function))
         
-        for e in execute:
-            print(f'publishing... topic: {topic}, subscriber: {subscriber.name}, message: {str(message) if len(str(message)) < 10 else "too long"}', verbose=3)
+        for s, e in execute:
+            print(f'publishing... topic: {topic}, subscriber: {s.name}, message: {str(message) if len(str(message)) < 32 else "too long"}', verbose=3)
             e(topic, copy.copy(message))
 
     def subscribe(self, topic, callback_function, subscriber):
@@ -166,14 +237,14 @@ class Cli:
         if 'verbose' in kwargs and self.verbose < kwargs['verbose']:
             return
 
-        # with self.lock:
+        with self.lock:
 
-        y, x = self.stdscr.getyx()
-        self.stdscr.addstr(self.line, 0, " ".join(str(arg) for arg in args))
-        self.stdscr.move(y, x)
-        self.stdscr.refresh()
+            y, x = self.stdscr.getyx()
+            self.stdscr.addstr(self.line, 0, " ".join(str(arg) for arg in args))
+            self.stdscr.move(y, x)
+            self.stdscr.refresh()
 
-        self.line += 1
+            self.line += 1
     
     def get_user_input(self):
 
@@ -252,7 +323,7 @@ class Cli:
 
                 self.stdscr.addstr(self.term_h - 1, 0, f'executing {command}...')
 
-                print(f'{command}:', use_lock=False)
+                print(f'{command}:')
                 getattr(self.mgr, command)()
 
                 break
@@ -328,9 +399,37 @@ class Image_Display:
         cv2.destroyAllWindows()
 
 
-verbose = 1
-original_print = print
-builtins.print = verbose_print
+class Socket_Node(Node):
+    def __init__(self, name, mgr, conn, subscription, args=None):
+        super().__init__(name, mgr, args)
+        self.conn = conn
+        self.subscription = subscription
+
+    def run(self):
+        self.subscribe(self.subscription, self.callback_function)
+
+    def callback_function(self, topic, message):
+
+        # TODO image
+
+        if isinstance(message, str):
+            data = START_MARKER + 'STR'.encode() + SPLIT_MARKER + message.encode() + END_MARKER
+        elif isinstance(message, int):
+            data = START_MARKER + 'INT'.encode() + SPLIT_MARKER + struct.pack('!i', message) + END_MARKER
+        elif isinstance(message, float):
+            data = START_MARKER + 'FLOAT'.encode() + SPLIT_MARKER + struct.pack('!d', message) + END_MARKER
+
+        else:
+            print('cannot send message over socket, message type unsupported')
+            return
+        
+        self.conn.sendall(data)
+    
+    def before_close(self):
+        self.conn.sendall(START_MARKER + CLOSE_MARKER + END_MARKER)
+        time.sleep(1)
+        self.conn.close()
+        return super().before_close()
 
 
 if __name__ == '__main__':
@@ -340,18 +439,17 @@ if __name__ == '__main__':
     parser.add_argument('--cfg', type=str, default=None, help='Path to config yaml file')
     parser.add_argument('--verbose', type=int, default=1, help='Verbose level')
     parser.add_argument('--cli', type=str_to_bool, default='True', help='Run in CLI mode')
+    parser.add_argument('--server', action='store_const', const=True, default=False, help='Run server')
 
     args = parser.parse_args()
+    
 
-    verbose = args.verbose
-
-
-    mgr = Node_Manager()
+    mgr = Node_Manager(args)
     
     if args.cli:
         cli = Cli(mgr, args.verbose)
 
-    print(f'starting with verbose level {args.verbose}, cli: {args.cli} and config file at {args.cfg}', verbose=1)
+    print(f'starting with verbose level {args.verbose}, cli: {args.cli}, server: {args.server} and config file at {args.cfg}', verbose=1)
 
     with open(args.cfg, 'r') as f:
         config = yaml.full_load(f)
