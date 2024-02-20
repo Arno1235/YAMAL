@@ -6,6 +6,11 @@ import cv2
 HOST = '127.0.0.1'
 PORT = 65432
 
+START_MARKER = b'$START$'
+END_MARKER = b'$END$'
+SPLIT_MARKER = b'$SPLIT$'
+CLOSE_MARKER = b'$CLOSE$'
+
 
 class CustomEvent:
     def __init__(self):
@@ -16,18 +21,18 @@ class CustomEvent:
     
     def send_string_data(self, string_data):
 
-        self.data = f'STR;{string_data};EOM'.encode()
+        self.data = START_MARKER + 'STR'.encode() + SPLIT_MARKER + string_data.encode() + END_MARKER
         self.event.set()
         self.event.clear()
     
     def send_img_data(self, img_data):
 
-        self.data = b'IMG;' + cv2.imencode('.png', img_data)[1].tobytes() + b';EOM'
+        self.data = START_MARKER + 'IMG'.encode() + SPLIT_MARKER + cv2.imencode('.png', img_data)[1].tobytes() + END_MARKER
         self.event.set()
         self.event.clear()
     
     def close(self):
-        self.data = f'CLOSE;EOM'.encode()
+        self.data = START_MARKER + CLOSE_MARKER + END_MARKER
         self.event.set()
         self.event.clear()
         time.sleep(1)
@@ -51,16 +56,18 @@ def handle_client(conn, addr, custom_event):
 
 def ping_thread(custom_event):
 
+    time.sleep(5)
+
     for i in range(5):
 
         custom_event.send_string_data(f'Ping {i}')
-        time.sleep(1)
+        time.sleep(0.1)
         custom_event.send_img_data(cv2.imread('image.png'))
-        time.sleep(1)
-        custom_event.data = b'TEST;qsdf;EOM'
+        time.sleep(0.1)
+        custom_event.data = START_MARKER + 'TEST'.encode() + SPLIT_MARKER + 'string_data'.encode() + END_MARKER
         custom_event.event.set()
         custom_event.event.clear()
-        time.sleep(1)
+        time.sleep(0.1)
     
     custom_event.close()
 
@@ -76,7 +83,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     threading.Thread(target=ping_thread, args=(custom_event, )).start()
     
-    while True:
-        conn, addr = s.accept()
-
-        threading.Thread(target=handle_client, args=(conn, addr, custom_event)).start()
+    while not custom_event.is_closed:
+        try:
+            s.settimeout(10)
+            conn, addr = s.accept()
+            threading.Thread(target=handle_client, args=(conn, addr, custom_event)).start()
+        except socket.timeout:
+            pass

@@ -16,10 +16,8 @@ def str_to_bool(s):
         raise argparse.ArgumentTypeError("Invalid value for boolean argument: '{}'".format(s))
 
 def verbose_print(*args, **kwargs):
-
     if 'verbose' in kwargs and verbose < kwargs['verbose']:
         return
-    
     original_print(*args)
 
 
