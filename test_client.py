@@ -1,4 +1,4 @@
-import socket
+import socket, struct
 import cv2
 import numpy as np
 
@@ -10,10 +10,16 @@ START_MARKER = b'$START$'
 END_MARKER = b'$END$'
 SPLIT_MARKER = b'$SPLIT$'
 CLOSE_MARKER = b'$CLOSE$'
+SUBSCRIPTION_MARKER = b'$SUB$'
 
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))
+
+    import time
+    time.sleep(1)
+
+    s.sendall(SUBSCRIPTION_MARKER + 'ping'.encode() + END_MARKER)
 
     while True:
 
@@ -51,6 +57,12 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
             if dtype == 'STR':
                 print(data.decode())
+            
+            elif dtype == 'INT':
+                print(struct.unpack('!i', data)[0])
+            
+            elif dtype == 'FLOAT':
+                print(struct.unpack('!d', data)[0])
             
             elif dtype == 'IMG':
                 print('image received')

@@ -87,6 +87,11 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.settimeout(10)
             conn, addr = s.accept()
+
+            packet = conn.recv(4096)
+
+            print('received', packet)
+
             threading.Thread(target=handle_client, args=(conn, addr, custom_event)).start()
         except socket.timeout:
             pass
