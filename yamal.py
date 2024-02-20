@@ -21,6 +21,7 @@ def verbose_print(*args, **kwargs):
         return
     original_print(*args)
 
+# TODO
 verbose = 0
 original_print = print
 builtins.print = verbose_print
@@ -350,8 +351,6 @@ if __name__ == '__main__':
         cli = Cli(mgr, args.verbose)
     else:
         verbose = args.verbose
-        # original_print = print
-        # builtins.print = verbose_print
 
     if args.verbose > 0:
         print(f'starting with verbose level {args.verbose}, cli: {args.cli} and config file at {args.cfg}')
