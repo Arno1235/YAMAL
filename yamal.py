@@ -340,6 +340,7 @@ class Cli:
 
         # TODO: print line longer than terminal width
         # TODO: scroll?
+        # TODO resizing terminal while using
 
         if 'verbose' in kwargs and self.verbose < kwargs['verbose']:
             return
@@ -355,7 +356,6 @@ class Cli:
     
     def get_user_input(self):
 
-        # TODO: add posibility for functions with input parameters
         # TODO: add verbose level change command
         # TODO: catch ctrl+c
 
@@ -426,12 +426,49 @@ class Cli:
 
         for command in commands:
             if user_input == str(command):
-                # print(inspect.signature(getattr(self.mgr, command)))
+
+                user_parameters = []
+
+                parameters = inspect.signature(getattr(self.mgr, command)).parameters
+                self.stdscr.addstr(self.term_h - 1, 0, f'{", ".join(parameter for parameter in parameters)} necessary for {command}...')
+                for parameter in parameters:
+
+                    self.stdscr.move(self.term_h - 2, 0)
+                    self.stdscr.clrtoeol()
+
+                    pre_text = f'{parameter}: '
+                    self.stdscr.addstr(self.term_h - 2, 0, pre_text)
+
+                    user_parameter_input = ''
+
+                    while True:
+                        char = self.stdscr.getch()
+
+                        with self.lock:
+
+                            if chr(char) == '\n':
+                                break
+
+                            if char == curses.KEY_BACKSPACE:
+                                user_parameter_input = user_parameter_input[:-1]
+                                self.stdscr.clrtoeol()
+                                continue
+                            
+                        user_parameter_input += chr(char)
+                    
+                    user_parameters.append(user_parameter_input)
+
+                    self.stdscr.move(self.term_h - 1, 0)
+                    self.stdscr.clrtoeol()
+
 
                 self.stdscr.addstr(self.term_h - 1, 0, f'executing {command}...')
+                print(f'executing {command}, with {", ".join([parameter + ' : ' + user_parameter for parameter, user_parameter in zip(parameters, user_parameters)])} ...', verbose=1)
 
-                print(f'{command}:')
-                getattr(self.mgr, command)()
+                try:
+                    getattr(self.mgr, command)(*user_parameters)
+                except TypeError:
+                    print('only string parameters are supported at the moment')
 
                 break
         else:
@@ -601,7 +638,7 @@ if __name__ == '__main__':
         if args.cli:
             cli = Cli(mgr, args.verbose)
 
-        if not args.server:
+        if args.server:
             print(f'starting with verbose level {args.verbose}, cli: {args.cli}, server at {args.ip} : {args.port} and config file at {args.cfg}', verbose=1)
         else:
             print(f'starting with verbose level {args.verbose}, cli: {args.cli} and config file at {args.cfg}', verbose=1)
