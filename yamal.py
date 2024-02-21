@@ -1,13 +1,11 @@
 import threading, multiprocessing
-import argparse, yaml
+import argparse, yaml, time, copy
+import numpy as np, cv2
 import importlib.util, builtins, inspect
 import curses
-import time
-import cv2
-import copy
 import socket, struct
 
-
+# TODO logging
 
 START_MARKER = b'$START$'
 END_MARKER = b'$END$'
@@ -217,6 +215,99 @@ class Node:
     def close(self):
         self.before_close()
         self._close_event.set()
+
+
+class Client_Manager:
+
+    def __init__(self, args):
+        self._close_event = threading.Event()
+        self.args = args
+        self.conn = None
+    
+    def _start(self):
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as conn:
+            conn.connect((get_arg(self.args, 'ip'), get_arg(self.args, 'port')))
+            time.sleep(1)
+            self.conn = conn
+            print('connection established', verbose=1)
+
+            thread_listen = threading.Thread(target=self._listen, daemon=True)
+            thread_listen.start()
+
+            thread_listen.join()
+        
+        self.conn = None
+
+    def _listen(self):
+
+        while not self._close_event.is_set():
+
+            message = b''
+            while len(message) == 0 or not message[-len(END_MARKER):] == END_MARKER:
+
+                packet = self.conn.recv(4096)
+
+                if self._close_event.is_set():
+                    return
+                if not packet or len(packet) == 0:
+                    continue
+
+                message += packet
+            
+            for m in message.split(END_MARKER)[:-1]:
+                if len(m) == 0:
+                    print('something went wrong, message has a length of 0', verbose=1)
+                    continue
+
+                if m[:len(START_MARKER)] != START_MARKER:
+                    print(f'wrong start marker, expected {START_MARKER}, but got {m[0]}, from message {m}', verbose=1)
+                    continue
+
+                m = m[len(START_MARKER):]
+
+                if m == CLOSE_MARKER:
+                    return
+
+                if len(m.split(SPLIT_MARKER)) != 3:
+                    print(f'cannot recognize message {m}')
+                    continue
+
+                dtype, topic, data = m.split(SPLIT_MARKER)
+                dtype = dtype.decode()
+                topic = topic.decode()
+
+                if dtype == 'STR':
+                    print(f'at {topic}, received string: {data.decode()}', verbose=1)
+                
+                elif dtype == 'INT':
+                    print(f'at {topic}, received int: {struct.unpack('!i', data)[0]}', verbose=1)
+                
+                elif dtype == 'FLOAT':
+                    print(f'at {topic}, received float: {struct.unpack('!d', data)[0]}', verbose=1)
+                
+                elif dtype == 'IMG':
+                    print(f'at {topic}, received image', verbose=1)
+
+                    # TODO
+                    image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+
+                else:
+                    print(f'message dtype not implemented: {dtype}')
+
+    def get_topics(self):
+        # TODO
+        pass
+
+    def subscribe(self, topic='ping'):
+
+        if self.conn is None:
+            print('no connection established', verbose=1)
+            return
+        
+        self.conn.sendall(SUBSCRIPTION_MARKER + topic.encode() + END_MARKER)
+
+        # TODO confirmation?
 
 
 class Cli:
@@ -485,20 +576,41 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     assert not(args.server and args.client), 'cannot run as server and client simultaneously, run as client in a different terminal'
+
+
+    if args.client:
+
+        client = Client_Manager(args)
     
+        if args.cli:
+            cli = Cli(client, args.verbose)
 
-    mgr = Node_Manager(args)
+        print(f'starting client at {args.ip} : {args.port} with verbose level {args.verbose}, cli: {args.cli}', verbose=1)
+
+        # TODO config file
+        client._start()
+
+        if args.cli:
+            cli.close()
+
+
+    else:
+
+        mgr = Node_Manager(args)
     
-    if args.cli:
-        cli = Cli(mgr, args.verbose)
+        if args.cli:
+            cli = Cli(mgr, args.verbose)
 
-    print(f'starting with verbose level {args.verbose}, cli: {args.cli}, server: {args.server} and config file at {args.cfg}', verbose=1)
+        if not args.server:
+            print(f'starting with verbose level {args.verbose}, cli: {args.cli}, server at {args.ip} : {args.port} and config file at {args.cfg}', verbose=1)
+        else:
+            print(f'starting with verbose level {args.verbose}, cli: {args.cli} and config file at {args.cfg}', verbose=1)
 
-    with open(args.cfg, 'r') as f:
-        config = yaml.full_load(f)
-    
+        with open(args.cfg, 'r') as f:
+            config = yaml.full_load(f)
+        
 
-    mgr._start(config)
+        mgr._start(config)
 
-    if args.cli:
-        cli.close()
+        if args.cli:
+            cli.close()
