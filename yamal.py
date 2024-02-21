@@ -8,8 +8,6 @@ import copy
 import socket, struct
 
 
-HOST = '127.0.0.1'
-PORT = 65432
 
 START_MARKER = b'$START$'
 END_MARKER = b'$END$'
@@ -28,11 +26,13 @@ def str_to_bool(s):
         raise argparse.ArgumentTypeError("Invalid value for boolean argument: '{}'".format(s))
 
 
-def get_arg(args, key, default):
+def get_arg(args, key, default=None):
     if args is None:
         return default
     if key not in args:
         return default
+    if isinstance(args, dict):
+        return args[key]
     return getattr(args, key)
 
 
@@ -100,7 +100,7 @@ class Node_Manager:
     
     def _server(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind((HOST, PORT))
+            s.bind((get_arg(self.args, 'ip'), get_arg(self.args, 'port')))
 
             s.listen()
             print("server is listening for connections...", verbose=1)
@@ -187,6 +187,14 @@ class Node:
         self.name = name
         self.mgr = mgr
         self.args = args
+    
+    def loop(self, for_loop_count=None, for_loop_in=None, while_loop_condition=None):
+
+        assert int(for_loop_count is None) + int(for_loop_in is None) + int(while_loop_condition is None) >= 2, 'cannot set 2 loop condition simultaneously'
+
+        if for_loop_count is not None:
+            for index in range(for_loop_count):
+                self.do_loop()
 
     def publish(self, topic, message):
         self.mgr.publish(topic, message)
@@ -206,6 +214,8 @@ class Node:
 
 
 class Cli:
+
+    # TODO overwrite assert?
 
     def __init__(self, mgr, verbose):
         self.lock = threading.Lock()
@@ -406,9 +416,9 @@ class Socket_Node(Node):
         self.subscription = subscription
 
     def run(self):
-        self.subscribe(self.subscription, self.callback_function)
+        self.subscribe(self.subscription, self.send_message)
 
-    def callback_function(self, topic, message):
+    def send_message(self, topic, message):
 
         # TODO image
 
@@ -425,6 +435,9 @@ class Socket_Node(Node):
         
         self.conn.sendall(data)
     
+    def listen_for_messages(self):
+        pass
+    
     def before_close(self):
         self.conn.sendall(START_MARKER + CLOSE_MARKER + END_MARKER)
         time.sleep(1)
@@ -436,12 +449,17 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Run YAMAL', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--cfg', type=str, default=None, help='Path to config yaml file')
-    parser.add_argument('--verbose', type=int, default=1, help='Verbose level')
-    parser.add_argument('--cli', type=str_to_bool, default='True', help='Run in CLI mode')
-    parser.add_argument('--server', action='store_const', const=True, default=False, help='Run server')
+    parser.add_argument('--cfg', type=str, default=None, help='path to config yaml file')
+    parser.add_argument('--verbose', type=int, default=1, help='verbose level')
+    parser.add_argument('--cli', type=str_to_bool, default='True', help='run in CLI mode')
+    parser.add_argument('--server', action='store_const', const=True, default=False, help='run server')
+    parser.add_argument('--client', action='store_const', const=True, default=False, help='run as client')
+    parser.add_argument('--ip', type=str, default='127.0.0.1', help='ip address for the server')
+    parser.add_argument('--port', type=int, default=65432, help='port for the server')
 
     args = parser.parse_args()
+
+    assert not(args.server and args.client), 'cannot run as server and client simultaneously, run as client in a different terminal'
     
 
     mgr = Node_Manager(args)

@@ -19,7 +19,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     import time
     time.sleep(1)
 
-    s.sendall(SUBSCRIPTION_MARKER + 'ping'.encode() + END_MARKER)
+    s.sendall(SUBSCRIPTION_MARKER + 'ping b'.encode() + END_MARKER)
 
     while True:
 

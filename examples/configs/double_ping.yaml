@@ -1,0 +1,23 @@
+# Example config YAML file
+
+node1a:
+  class name: Ping_Pub
+  location: examples/nodes/ping/ping.py
+  args:
+    number of pings: 10
+    topic: 'ping a'
+    delay: 1
+
+node1b:
+  class name: Ping_Pub
+  location: examples/nodes/ping/ping.py
+  args:
+    number of pings: 5
+    topic: 'ping b'
+    delay: 2
+
+node2:
+  class name: Ping_Sub
+  location: examples/nodes/ping/ping.py
+  args:
+    topic: 'ping a'
