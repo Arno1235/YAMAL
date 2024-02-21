@@ -27,12 +27,9 @@ def str_to_bool(s):
 
 
 def get_arg(args, key, default=None):
-    if args is None:
-        return default
-    if key not in args:
-        return default
-    if isinstance(args, dict):
-        return args[key]
+    if args is None: return default
+    if key not in args: return default
+    if isinstance(args, dict): return args[key]
     return getattr(args, key)
 
 
@@ -194,7 +191,24 @@ class Node:
 
         if for_loop_count is not None:
             for index in range(for_loop_count):
-                self.do_loop()
+                self.loop_event(index)
+                if self._close_event.is_set():
+                    return
+        
+        elif for_loop_in is not None:
+            for item in for_loop_in:
+                self.loop_event(item)
+                if self._close_event.is_set():
+                    return
+        
+        elif while_loop_condition is not None:
+            while while_loop_condition:
+                self.loop_event(None)
+                if self._close_event.is_set():
+                    return
+
+    def loop_event(self, item):
+        pass
 
     def publish(self, topic, message):
         self.mgr.publish(topic, message)
@@ -447,7 +461,7 @@ class Socket_Node(Node):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Run YAMAL', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(description='run YAMAL', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--cfg', type=str, default=None, help='path to config yaml file')
     parser.add_argument('--verbose', type=int, default=1, help='verbose level')
