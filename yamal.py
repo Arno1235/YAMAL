@@ -1,15 +1,11 @@
 import threading, multiprocessing
-import argparse, yaml
+import argparse, yaml, time, copy
+import numpy as np, cv2
 import importlib.util, builtins, inspect
 import curses
-import time
-import cv2
-import copy
 import socket, struct
 
-
-HOST = '127.0.0.1'
-PORT = 65432
+# TODO logging
 
 START_MARKER = b'$START$'
 END_MARKER = b'$END$'
@@ -28,11 +24,10 @@ def str_to_bool(s):
         raise argparse.ArgumentTypeError("Invalid value for boolean argument: '{}'".format(s))
 
 
-def get_arg(args, key, default):
-    if args is None:
-        return default
-    if key not in args:
-        return default
+def get_arg(args, key, default=None):
+    if args is None: return default
+    if key not in args: return default
+    if isinstance(args, dict): return args[key]
     return getattr(args, key)
 
 
@@ -100,7 +95,7 @@ class Node_Manager:
     
     def _server(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind((HOST, PORT))
+            s.bind((get_arg(self.args, 'ip'), get_arg(self.args, 'port')))
 
             s.listen()
             print("server is listening for connections...", verbose=1)
@@ -110,15 +105,7 @@ class Node_Manager:
                     s.settimeout(10)
                     conn, addr = s.accept()
 
-                    packet = conn.recv(4096)
-
-                    if packet[:len(SUBSCRIPTION_MARKER)] != SUBSCRIPTION_MARKER or packet[-len(END_MARKER):] != END_MARKER:
-                        print(f'unrecognized format for connection request: {packet}', verbose=1)
-
-                    subscription = packet[len(SUBSCRIPTION_MARKER):-len(END_MARKER)].decode()
-                    print(f'received new connection request for {subscription}', verbose=1)
-
-                    node = Socket_Node(f'socket node {subscription}', self, conn, subscription)
+                    node = Socket_Node(f'socket node {len(self.server_threads)}', self, conn)
                     thread = threading.Thread(target=node.run, daemon=True)
                     thread.start()
                     print(f'{node.name} started', verbose=3)
@@ -187,6 +174,31 @@ class Node:
         self.name = name
         self.mgr = mgr
         self.args = args
+    
+    def loop(self, for_loop_count=None, for_loop_in=None, while_loop_condition=None):
+
+        assert int(for_loop_count is None) + int(for_loop_in is None) + int(while_loop_condition is None) >= 2, 'cannot set 2 loop condition simultaneously'
+
+        if for_loop_count is not None:
+            for index in range(for_loop_count):
+                self.loop_event(index)
+                if self._close_event.is_set():
+                    return
+        
+        elif for_loop_in is not None:
+            for item in for_loop_in:
+                self.loop_event(item)
+                if self._close_event.is_set():
+                    return
+        
+        elif while_loop_condition is not None:
+            while while_loop_condition and not self._close_event.is_set():
+                self.loop_event(None)
+                if self._close_event.is_set():
+                    return
+
+    def loop_event(self, item):
+        pass
 
     def publish(self, topic, message):
         self.mgr.publish(topic, message)
@@ -205,7 +217,102 @@ class Node:
         self._close_event.set()
 
 
+class Client_Manager:
+
+    def __init__(self, args):
+        self._close_event = threading.Event()
+        self.args = args
+        self.conn = None
+    
+    def _start(self):
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as conn:
+            conn.connect((get_arg(self.args, 'ip'), get_arg(self.args, 'port')))
+            time.sleep(1)
+            self.conn = conn
+            print('connection established', verbose=1)
+
+            thread_listen = threading.Thread(target=self._listen, daemon=True)
+            thread_listen.start()
+
+            thread_listen.join()
+        
+        self.conn = None
+
+    def _listen(self):
+
+        while not self._close_event.is_set():
+
+            message = b''
+            while len(message) == 0 or not message[-len(END_MARKER):] == END_MARKER:
+
+                packet = self.conn.recv(4096)
+
+                if self._close_event.is_set():
+                    return
+                if not packet or len(packet) == 0:
+                    continue
+
+                message += packet
+            
+            for m in message.split(END_MARKER)[:-1]:
+                if len(m) == 0:
+                    print('something went wrong, message has a length of 0', verbose=1)
+                    continue
+
+                if m[:len(START_MARKER)] != START_MARKER:
+                    print(f'wrong start marker, expected {START_MARKER}, but got {m[0]}, from message {m}', verbose=1)
+                    continue
+
+                m = m[len(START_MARKER):]
+
+                if m == CLOSE_MARKER:
+                    return
+
+                if len(m.split(SPLIT_MARKER)) != 3:
+                    print(f'cannot recognize message {m}')
+                    continue
+
+                dtype, topic, data = m.split(SPLIT_MARKER)
+                dtype = dtype.decode()
+                topic = topic.decode()
+
+                if dtype == 'STR':
+                    print(f'at {topic}, received string: {data.decode()}', verbose=1)
+                
+                elif dtype == 'INT':
+                    print(f'at {topic}, received int: {struct.unpack('!i', data)[0]}', verbose=1)
+                
+                elif dtype == 'FLOAT':
+                    print(f'at {topic}, received float: {struct.unpack('!d', data)[0]}', verbose=1)
+                
+                elif dtype == 'IMG':
+                    print(f'at {topic}, received image', verbose=1)
+
+                    # TODO
+                    image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+
+                else:
+                    print(f'message dtype not implemented: {dtype}')
+
+    def get_topics(self):
+        # TODO
+        pass
+
+    def subscribe(self, topic='ping'):
+
+        if self.conn is None:
+            print('no connection established', verbose=1)
+            return
+        
+        self.conn.sendall(SUBSCRIPTION_MARKER + topic.encode() + END_MARKER)
+
+        # TODO confirmation?
+
+
 class Cli:
+
+    # TODO overwrite assert?
 
     def __init__(self, mgr, verbose):
         self.lock = threading.Lock()
@@ -233,6 +340,7 @@ class Cli:
 
         # TODO: print line longer than terminal width
         # TODO: scroll?
+        # TODO resizing terminal while using
 
         if 'verbose' in kwargs and self.verbose < kwargs['verbose']:
             return
@@ -248,7 +356,6 @@ class Cli:
     
     def get_user_input(self):
 
-        # TODO: add posibility for functions with input parameters
         # TODO: add verbose level change command
         # TODO: catch ctrl+c
 
@@ -319,12 +426,49 @@ class Cli:
 
         for command in commands:
             if user_input == str(command):
-                # print(inspect.signature(getattr(self.mgr, command)))
+
+                user_parameters = []
+
+                parameters = inspect.signature(getattr(self.mgr, command)).parameters
+                self.stdscr.addstr(self.term_h - 1, 0, f'{", ".join(parameter for parameter in parameters)} necessary for {command}...')
+                for parameter in parameters:
+
+                    self.stdscr.move(self.term_h - 2, 0)
+                    self.stdscr.clrtoeol()
+
+                    pre_text = f'{parameter}: '
+                    self.stdscr.addstr(self.term_h - 2, 0, pre_text)
+
+                    user_parameter_input = ''
+
+                    while True:
+                        char = self.stdscr.getch()
+
+                        with self.lock:
+
+                            if chr(char) == '\n':
+                                break
+
+                            if char == curses.KEY_BACKSPACE:
+                                user_parameter_input = user_parameter_input[:-1]
+                                self.stdscr.clrtoeol()
+                                continue
+                            
+                        user_parameter_input += chr(char)
+                    
+                    user_parameters.append(user_parameter_input)
+
+                    self.stdscr.move(self.term_h - 1, 0)
+                    self.stdscr.clrtoeol()
+
 
                 self.stdscr.addstr(self.term_h - 1, 0, f'executing {command}...')
+                print(f'executing {command}, with {", ".join([parameter + ' : ' + user_parameter for parameter, user_parameter in zip(parameters, user_parameters)])} ...', verbose=1)
 
-                print(f'{command}:')
-                getattr(self.mgr, command)()
+                try:
+                    getattr(self.mgr, command)(*user_parameters)
+                except TypeError:
+                    print('only string parameters are supported at the moment')
 
                 break
         else:
@@ -400,24 +544,46 @@ class Image_Display:
 
 
 class Socket_Node(Node):
-    def __init__(self, name, mgr, conn, subscription, args=None):
+    def __init__(self, name, mgr, conn, args=None):
         super().__init__(name, mgr, args)
         self.conn = conn
-        self.subscription = subscription
 
     def run(self):
-        self.subscribe(self.subscription, self.callback_function)
+        self.loop(while_loop_condition=True)
+        
+    def loop_event(self, item):
 
-    def callback_function(self, topic, message):
+        try:
+            self.conn.settimeout(10)
+            packet = self.conn.recv(4096)
+            if not packet or len(packet) == 0:
+                return
+
+            if packet[:len(SUBSCRIPTION_MARKER)] != SUBSCRIPTION_MARKER or packet[-len(END_MARKER):] != END_MARKER:
+                print(f'unrecognized format for connection request: {packet}', verbose=1)
+                return
+
+            subscription = packet[len(SUBSCRIPTION_MARKER):-len(END_MARKER)].decode()
+            print(f'received new connection request for {subscription}', verbose=1)
+
+            self.subscribe(subscription, self.send_message)
+
+        except socket.timeout:
+            pass
+        except socket.error as e:
+            if e.errno == 9:
+                pass
+
+    def send_message(self, topic, message):
 
         # TODO image
 
         if isinstance(message, str):
-            data = START_MARKER + 'STR'.encode() + SPLIT_MARKER + message.encode() + END_MARKER
+            data = START_MARKER + 'STR'.encode() + SPLIT_MARKER + topic.encode() + SPLIT_MARKER + message.encode() + END_MARKER
         elif isinstance(message, int):
-            data = START_MARKER + 'INT'.encode() + SPLIT_MARKER + struct.pack('!i', message) + END_MARKER
+            data = START_MARKER + 'INT'.encode() + SPLIT_MARKER + topic.encode() + SPLIT_MARKER + struct.pack('!i', message) + END_MARKER
         elif isinstance(message, float):
-            data = START_MARKER + 'FLOAT'.encode() + SPLIT_MARKER + struct.pack('!d', message) + END_MARKER
+            data = START_MARKER + 'FLOAT'.encode() + SPLIT_MARKER + topic.encode() + SPLIT_MARKER + struct.pack('!d', message) + END_MARKER
 
         else:
             print('cannot send message over socket, message type unsupported')
@@ -434,28 +600,54 @@ class Socket_Node(Node):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Run YAMAL', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(description='run YAMAL', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--cfg', type=str, default=None, help='Path to config yaml file')
-    parser.add_argument('--verbose', type=int, default=1, help='Verbose level')
-    parser.add_argument('--cli', type=str_to_bool, default='True', help='Run in CLI mode')
-    parser.add_argument('--server', action='store_const', const=True, default=False, help='Run server')
+    parser.add_argument('--cfg', type=str, default=None, help='path to config yaml file')
+    parser.add_argument('--verbose', type=int, default=1, help='verbose level')
+    parser.add_argument('--cli', type=str_to_bool, default='True', help='run in CLI mode')
+    parser.add_argument('--server', action='store_const', const=True, default=False, help='run server')
+    parser.add_argument('--client', action='store_const', const=True, default=False, help='run as client')
+    parser.add_argument('--ip', type=str, default='127.0.0.1', help='ip address for the server')
+    parser.add_argument('--port', type=int, default=65432, help='port for the server')
 
     args = parser.parse_args()
+
+    assert not(args.server and args.client), 'cannot run as server and client simultaneously, run as client in a different terminal'
+
+
+    if args.client:
+
+        client = Client_Manager(args)
     
+        if args.cli:
+            cli = Cli(client, args.verbose)
 
-    mgr = Node_Manager(args)
+        print(f'starting client at {args.ip} : {args.port} with verbose level {args.verbose}, cli: {args.cli}', verbose=1)
+
+        # TODO config file
+        client._start()
+
+        if args.cli:
+            cli.close()
+
+
+    else:
+
+        mgr = Node_Manager(args)
     
-    if args.cli:
-        cli = Cli(mgr, args.verbose)
+        if args.cli:
+            cli = Cli(mgr, args.verbose)
 
-    print(f'starting with verbose level {args.verbose}, cli: {args.cli}, server: {args.server} and config file at {args.cfg}', verbose=1)
+        if args.server:
+            print(f'starting with verbose level {args.verbose}, cli: {args.cli}, server at {args.ip} : {args.port} and config file at {args.cfg}', verbose=1)
+        else:
+            print(f'starting with verbose level {args.verbose}, cli: {args.cli} and config file at {args.cfg}', verbose=1)
 
-    with open(args.cfg, 'r') as f:
-        config = yaml.full_load(f)
-    
+        with open(args.cfg, 'r') as f:
+            config = yaml.full_load(f)
+        
 
-    mgr._start(config)
+        mgr._start(config)
 
-    if args.cli:
-        cli.close()
+        if args.cli:
+            cli.close()

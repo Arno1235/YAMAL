@@ -1,28 +1,25 @@
-from yamal import Node
+from yamal import Node, get_arg
 import time
 
 
 class Ping_Pub(Node):
 
     def run(self):
+        self.loop(for_loop_count=get_arg(self.args, 'number of pings', 10))
 
-        for _ in range(self.args['number of pings']):
-            self.publish('ping', time.time())
-            time.sleep(1)
-
-            if self._close_event.is_set():
-                return
+    def loop_event(self, item):
+        self.publish(get_arg(self.args, 'topic', 'ping'), time.time())
+        time.sleep(get_arg(self.args, 'delay', 1))
 
 
 class Ping_Sub(Node):
 
     def __init__(self, name, mgr, args):
         super().__init__(name, mgr, args)
-
         self.pings = []
 
     def run(self):
-        self.subscribe('ping', self.callback_function)
+        self.subscribe(get_arg(self.args, 'topic', 'ping'), self.callback_function)
 
     def callback_function(self, topic, message):
         ping = round((time.time() - message) * 1_000_000)
