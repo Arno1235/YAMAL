@@ -1,6 +1,7 @@
 from yamal import Node_Manager, Node
 import time, pytest
 
+# TODO test server client functionality
 
 class Publisher(Node):
 

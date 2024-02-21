@@ -348,6 +348,15 @@ class Cli:
         with self.lock:
 
             y, x = self.stdscr.getyx()
+
+            if self.line >= self.term_h - 3:
+                self.line = self.term_h - 4
+
+                for l in range(self.line):
+                    self.stdscr.move(l, 0)
+                    self.stdscr.clrtoeol()
+                    self.stdscr.addstr(l, 0, self.stdscr.instr(l + 1, 0))
+
             self.stdscr.addstr(self.line, 0, " ".join(str(arg) for arg in args))
             self.stdscr.move(y, x)
             self.stdscr.refresh()
@@ -379,8 +388,8 @@ class Cli:
 
                 if chr(char) == '\n':
                     break
-
-                if char == curses.KEY_BACKSPACE:
+                
+                if chr(char) == '\b':
                     user_input = user_input[:-1]
                     self.stdscr.clrtoeol()
                     continue
@@ -458,9 +467,8 @@ class Cli:
                     
                     user_parameters.append(user_parameter_input)
 
-                    self.stdscr.move(self.term_h - 1, 0)
-                    self.stdscr.clrtoeol()
-
+                self.stdscr.move(self.term_h - 1, 0)
+                self.stdscr.clrtoeol()
 
                 self.stdscr.addstr(self.term_h - 1, 0, f'executing {command}...')
                 print(f'executing {command}, with {", ".join([parameter + ' : ' + user_parameter for parameter, user_parameter in zip(parameters, user_parameters)])} ...', verbose=1)
