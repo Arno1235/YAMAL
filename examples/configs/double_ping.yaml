@@ -4,7 +4,7 @@ node1a:
   class name: Ping_Pub
   location: examples/nodes/ping/ping.py
   args:
-    number of pings: 10
+    number of pings: 100
     topic: 'ping a'
     delay: 1
 
@@ -12,7 +12,7 @@ node1b:
   class name: Ping_Pub
   location: examples/nodes/ping/ping.py
   args:
-    number of pings: 5
+    number of pings: 50
     topic: 'ping b'
     delay: 2
 

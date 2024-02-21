@@ -107,15 +107,7 @@ class Node_Manager:
                     s.settimeout(10)
                     conn, addr = s.accept()
 
-                    packet = conn.recv(4096)
-
-                    if packet[:len(SUBSCRIPTION_MARKER)] != SUBSCRIPTION_MARKER or packet[-len(END_MARKER):] != END_MARKER:
-                        print(f'unrecognized format for connection request: {packet}', verbose=1)
-
-                    subscription = packet[len(SUBSCRIPTION_MARKER):-len(END_MARKER)].decode()
-                    print(f'received new connection request for {subscription}', verbose=1)
-
-                    node = Socket_Node(f'socket node {subscription}', self, conn, subscription)
+                    node = Socket_Node(f'socket node {len(self.server_threads)}', self, conn)
                     thread = threading.Thread(target=node.run, daemon=True)
                     thread.start()
                     print(f'{node.name} started', verbose=3)
@@ -202,7 +194,7 @@ class Node:
                     return
         
         elif while_loop_condition is not None:
-            while while_loop_condition:
+            while while_loop_condition and not self._close_event.is_set():
                 self.loop_event(None)
                 if self._close_event.is_set():
                     return
@@ -424,33 +416,52 @@ class Image_Display:
 
 
 class Socket_Node(Node):
-    def __init__(self, name, mgr, conn, subscription, args=None):
+    def __init__(self, name, mgr, conn, args=None):
         super().__init__(name, mgr, args)
         self.conn = conn
-        self.subscription = subscription
 
     def run(self):
-        self.subscribe(self.subscription, self.send_message)
+        self.loop(while_loop_condition=True)
+        
+    def loop_event(self, item):
+
+        try:
+            self.conn.settimeout(10)
+            packet = self.conn.recv(4096)
+            if not packet or len(packet) == 0:
+                return
+
+            if packet[:len(SUBSCRIPTION_MARKER)] != SUBSCRIPTION_MARKER or packet[-len(END_MARKER):] != END_MARKER:
+                print(f'unrecognized format for connection request: {packet}', verbose=1)
+                return
+
+            subscription = packet[len(SUBSCRIPTION_MARKER):-len(END_MARKER)].decode()
+            print(f'received new connection request for {subscription}', verbose=1)
+
+            self.subscribe(subscription, self.send_message)
+
+        except socket.timeout:
+            pass
+        except socket.error as e:
+            if e.errno == 9:
+                pass
 
     def send_message(self, topic, message):
 
         # TODO image
 
         if isinstance(message, str):
-            data = START_MARKER + 'STR'.encode() + SPLIT_MARKER + message.encode() + END_MARKER
+            data = START_MARKER + 'STR'.encode() + SPLIT_MARKER + topic.encode() + SPLIT_MARKER + message.encode() + END_MARKER
         elif isinstance(message, int):
-            data = START_MARKER + 'INT'.encode() + SPLIT_MARKER + struct.pack('!i', message) + END_MARKER
+            data = START_MARKER + 'INT'.encode() + SPLIT_MARKER + topic.encode() + SPLIT_MARKER + struct.pack('!i', message) + END_MARKER
         elif isinstance(message, float):
-            data = START_MARKER + 'FLOAT'.encode() + SPLIT_MARKER + struct.pack('!d', message) + END_MARKER
+            data = START_MARKER + 'FLOAT'.encode() + SPLIT_MARKER + topic.encode() + SPLIT_MARKER + struct.pack('!d', message) + END_MARKER
 
         else:
             print('cannot send message over socket, message type unsupported')
             return
         
         self.conn.sendall(data)
-    
-    def listen_for_messages(self):
-        pass
     
     def before_close(self):
         self.conn.sendall(START_MARKER + CLOSE_MARKER + END_MARKER)
