@@ -349,14 +349,16 @@ class Cli:
 
             y, x = self.stdscr.getyx()
 
-            if self.line >= self.term_h - 3:
-                self.line = self.term_h - 4
+            if self.line >= self.term_h - 4:
+                self.line = self.term_h - 5
 
                 for l in range(self.line):
                     self.stdscr.move(l, 0)
                     self.stdscr.clrtoeol()
                     self.stdscr.addstr(l, 0, self.stdscr.instr(l + 1, 0))
 
+            self.stdscr.move(self.line, 0)
+            self.stdscr.clrtoeol()
             self.stdscr.addstr(self.line, 0, " ".join(str(arg) for arg in args))
             self.stdscr.move(y, x)
             self.stdscr.refresh()
@@ -389,7 +391,7 @@ class Cli:
                 if chr(char) == '\n':
                     break
                 
-                if chr(char) == '\b':
+                if char == curses.KEY_BACKSPACE or chr(char) == '\b':
                     user_input = user_input[:-1]
                     self.stdscr.clrtoeol()
                     continue
